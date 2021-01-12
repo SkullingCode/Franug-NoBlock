@@ -22,35 +22,39 @@
 
 
 #pragma semicolon 1
+#pragma newdecls required
 
 #define VERSION "1.2"
 
 
-new Handle:sm_noblock_cts;
-new Handle:sm_noblock_ts;
-new Handle:sm_noblock_time;
-new Handle:noblock2time;
+ConVar sm_noblock_cts;
+ConVar sm_noblock_ts;
+ConVar sm_noblock_time;
+ConVar noblock2time;
+ConVar advertisenb;
+
+bool g_badvertisenb;
 
 
-new bool:g_ShouldCollide[MAXPLAYERS+1] = { true, ... };
-new bool:g_IsNoBlock[MAXPLAYERS+1] = {false, ...};
-new bool:g_IsNoBlock2[MAXPLAYERS+1] = {false, ...};
+bool g_ShouldCollide[MAXPLAYERS+1] = { true, ... };
+bool g_IsNoBlock[MAXPLAYERS+1] = {false, ...};
+bool g_IsNoBlock2[MAXPLAYERS+1] = {false, ...};
 
-new Veces[MAXPLAYERS+1] = 0;
+int Veces[MAXPLAYERS+1] = 0;
 Handle timers[MAXPLAYERS + 1];
 
-new Handle:g_timer = INVALID_HANDLE;
+Handle g_timer = INVALID_HANDLE;
 
-public Plugin:myinfo = 
+public Plugin myinfo = 
 {
 	name = "SM Franug NoBlock",
-	author = "Franc1sco franug",
+	author = "Franc1sco franug/Edited JZ",
 	description = "",
 	version = VERSION,
 	url = "http://steamcommunity.com/id/franug"
 };
 
-public OnPluginStart()
+public void  OnPluginStart()
 {
 
 	HookEvent("round_freeze_end", Event_RoundStart, EventHookMode_Post);
@@ -61,20 +65,35 @@ public OnPluginStart()
 
 	sm_noblock_cts = CreateConVar("sm_noblock_cts", "1", "CT max for noblock in round start");
 	sm_noblock_ts = CreateConVar("sm_noblock_ts", "1", "Ts max for noblock in round start");
-
 	sm_noblock_time = CreateConVar("sm_noblock_time", "6.0", "Secods of first noblock (low value because can cause Mayhem bug).");
-
 	noblock2time = CreateConVar("sm_noblock2_time", "10.0", "Seconds of secondary noblock");
+	advertisenb = CreateConVar("sm_noblock_advertise", "1", "Advertise NoBlock is enabled/disabled in chat");
+	
+	if (advertisenb.IntValue == 0)
+	{
+		g_badvertisenb=false;
+	}
+	else
+	{
+		g_badvertisenb=true;
+	}
 
 	RegConsoleCmd("sm_noblock", DONoBlock);
 	RegConsoleCmd("sm_nb", DONoBlock);
 }
-
-public Event_RoundStart(Handle:event, const String:name[], bool:dontBroadcast)
+public void OnAllPluginsLoaded()
+{
+	GeneralDataConfig();
+}
+public void OnMapStart()
+{
+	GeneralDataConfig();
+}
+public void Event_RoundStart(Handle event, const char[] name, bool dontBroadcast)
 {
 
-	new Ts, CTs;
-	for(new i=1; i <= MaxClients; i++)
+	int Ts, CTs;
+	for(int i=1; i <= MaxClients; i++)
 	{
 		if (IsClientInGame(i) && IsPlayerAlive(i))
 		{
@@ -87,15 +106,16 @@ public Event_RoundStart(Handle:event, const String:name[], bool:dontBroadcast)
 
 	if (Ts > GetConVarInt(sm_noblock_ts) && CTs > GetConVarInt(sm_noblock_cts))
 	{
-		for (new i = 1; i <= MaxClients; i++)
+		for (int i = 1; i <= MaxClients; i++)
 		{
 			if (IsClientInGame(i) && IsPlayerAlive(i))
 			{
 				SetEntProp(i, Prop_Data, "m_CollisionGroup", 2);
-				PrintToChat(i, " \x04[NoBlock]\x01 You have %i seconds of primary NoBlock", GetConVarInt(sm_noblock_time));
-                                    
+				if (g_badvertisenb)
+					PrintToChat(i, " \x04[NoBlock]\x01 You have %i seconds of primary NoBlock", GetConVarInt(sm_noblock_time));
+									
 				g_IsNoBlock[i] = true;
-                                    
+									
 			}
 		}
 		if (g_timer != INVALID_HANDLE)KillTimer(g_timer);
@@ -104,17 +124,18 @@ public Event_RoundStart(Handle:event, const String:name[], bool:dontBroadcast)
 	}
 }
 
-public Action:DesactivadoNB(Handle:timer)
+public Action DesactivadoNB(Handle timer)
 {
 	g_timer = INVALID_HANDLE;
-	for (new client = 1; client <= MaxClients; client++)
+	for (int client = 1; client <= MaxClients; client++)
 	{
 		if (IsClientInGame(client) && IsPlayerAlive(client))
 		{
 			if (g_IsNoBlock[client])
 			{
 				SetEntProp(client, Prop_Data, "m_CollisionGroup", 5);
-				PrintToChat(client, " \x04[NoBlock]\x01 Now you have %i seconds of secondary NoBlock", GetConVarInt(noblock2time));
+				if (g_badvertisenb)
+					PrintToChat(client, " \x04[NoBlock]\x01 Now you have %i seconds of secondary NoBlock", GetConVarInt(noblock2time));
 				g_IsNoBlock[client] = false;
 
 				Veces[client] = GetConVarInt(noblock2time);
@@ -125,45 +146,48 @@ public Action:DesactivadoNB(Handle:timer)
 	}
 }
 
-public Action:DesactivadoNB2(Handle:timer, any:client)
+public Action DesactivadoNB2(Handle timer, any client)
 {
    if (IsClientInGame(client) && IsPlayerAlive(client))
    {
-     if (g_IsNoBlock2[client])
-     {
-         g_IsNoBlock2[client] = false;
-         PrintToChat(client, " \x04[NoBlock]\x01 Now you dont have NoBlock");
-     }
+	 if (g_IsNoBlock2[client])
+	 {
+		 g_IsNoBlock2[client] = false;
+		 if (g_badvertisenb)
+			PrintToChat(client, " \x04[NoBlock]\x01 Now you dont have NoBlock");
+	 }
    }
 }
 
  
 
-public Action:DONoBlock(client,args)
+public Action DONoBlock(int client,int args)
 {
    if (IsClientInGame(client) && IsPlayerAlive(client) && !g_IsNoBlock[client])
    {
-         //SetEntData(client, g_offsCollisionGroup, 2, 4, true);
-         PrintToChat(client, " \x04[NoBlock]\x01 You have %i seconds of NoBlock", GetConVarInt(noblock2time));
-         CreateTimer(GetConVarInt(noblock2time) * 1.0, DesactivadoNB2, client);
-         g_IsNoBlock2[client] = true;
+		 //SetEntData(client, g_offsCollisionGroup, 2, 4, true);
+		 if (g_badvertisenb)
+			PrintToChat(client, " \x04[NoBlock]\x01 You have %i seconds of NoBlock", GetConVarInt(noblock2time));
+		 CreateTimer(GetConVarInt(noblock2time) * 1.0, DesactivadoNB2, client);
+		 g_IsNoBlock2[client] = true;
    }
    else
    {
-         PrintToChat(client, " \x04[NoBlock]\x01 You already have NoBlock or you are dead");
+		if (g_badvertisenb)
+			PrintToChat(client, " \x04[NoBlock]\x01 You already have NoBlock or you are dead");
    }
 }
 
-public Action:PlayerSpawn(Handle:event, const String:name[], bool:dontBroadcast)
+public Action PlayerSpawn(Handle event, const char[] name, bool dontBroadcast)
 {
-	new client = GetClientOfUserId(GetEventInt(event, "userid"));
+	int client = GetClientOfUserId(GetEventInt(event, "userid"));
 
 	g_IsNoBlock[client] = false;
 	g_IsNoBlock2[client] = false;
 	OnClientDisconnect(client);
 }
 
-public OnClientPutInServer(client)
+public void OnClientPutInServer(int client)
 {
 	SDKHook(client, SDKHook_ShouldCollide, ShouldCollide);
 	SDKHook(client, SDKHook_StartTouch, Touch);
@@ -175,7 +199,7 @@ public OnClientPutInServer(client)
 
 
 
-public bool:ShouldCollide(entity, collisiongroup, contentsmask, bool:result)
+public bool ShouldCollide(int entity, int collisiongroup, int contentsmask, bool result)
 {
 		
 	if (contentsmask == 33636363)
@@ -186,7 +210,7 @@ public bool:ShouldCollide(entity, collisiongroup, contentsmask, bool:result)
 	return true;
 }
 
-public Touch(ent1, ent2)
+public void Touch(int ent1, int ent2)
 {
 
 	if(ent1 == ent2)
@@ -204,14 +228,14 @@ public Touch(ent1, ent2)
 	}
 }
 
-public OnClientDisconnect(client)
+public void OnClientDisconnect(int client)
 {
 	if (timers[client] != INVALID_HANDLE)KillTimer(timers[client]);
 	
 	timers[client] = INVALID_HANDLE;
 }
 
-public EndTouch(ent1, ent2)
+public void EndTouch(int ent1, int ent2)
 {
 
 	if(ent1 == ent2)
@@ -234,7 +258,7 @@ public EndTouch(ent1, ent2)
 	}
 } 
 
-public Action:TurnOnCollision(Handle:timer, any:client)
+public Action TurnOnCollision(Handle timer, any client)
 {
 	timers[client] = INVALID_HANDLE;
 	if (IsClientInGame(client) && IsPlayerAlive(client) && !g_ShouldCollide[client])
@@ -242,7 +266,7 @@ public Action:TurnOnCollision(Handle:timer, any:client)
 
 } 
 
-public Action:Repetidor(Handle:timer, any:client)
+public Action Repetidor(Handle timer, any client)
 {
 	if (!IsClientInGame(client) || !IsPlayerAlive(client))
 	{
@@ -252,7 +276,8 @@ public Action:Repetidor(Handle:timer, any:client)
 	if (Veces[client] == 0)
 	{
 		g_IsNoBlock2[client] = false;
-		PrintToChat(client, " \x04[NoBlock]\x01 Now you dont have NoBlock");
+		if (g_badvertisenb)
+			PrintToChat(client, " \x04[NoBlock]\x01 Now you dont have NoBlock");
 		return Plugin_Stop;
 	}
 
@@ -264,4 +289,33 @@ public Action:Repetidor(Handle:timer, any:client)
 	Veces[client] -= 1;
 
 	return Plugin_Continue;
+}
+void GeneralDataConfig()
+{
+//++++++++++++++GENERAL DATA FROM CONFIG++++++++++++++++++++++++++++++++++++	
+
+	char GeneralDataLoc[128];
+	BuildPath(Path_SM,GeneralDataLoc,sizeof(GeneralDataLoc),"configs/noblock/general.txt");
+	Handle cfgGeneralData = CreateKeyValues("General Data");
+	if(!FileToKeyValues(cfgGeneralData, GeneralDataLoc)){LogToGame("Unable to load General Data key value from configs/noblock/general.txt");}
+	
+	sm_noblock_cts.IntValue = KvGetNum(cfgGeneralData, "enable_ct_nb", 1);
+	sm_noblock_ts.IntValue = KvGetNum(cfgGeneralData, "enable_t_nb", 1);
+	sm_noblock_time.FloatValue = KvGetFloat(cfgGeneralData, "primary_nb_time", 6.0);
+	noblock2time.FloatValue = KvGetFloat(cfgGeneralData, "secondary_nb_time", 10.0);
+	advertisenb.IntValue = KvGetNum(cfgGeneralData, "print_chat_nb", 1);
+	
+	
+
+	CloseHandle(cfgGeneralData);
+	cfgGeneralData=INVALID_HANDLE;
+	
+	if (advertisenb.IntValue == 0)
+	{
+		g_badvertisenb=false;
+	}
+	else
+	{
+		g_badvertisenb=true;
+	}
 }
